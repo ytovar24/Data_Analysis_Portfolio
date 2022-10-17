@@ -1,0 +1,235 @@
+install.packages("tidyverse")
+library("tidyverse")
+library("readr")
+library(lubridate)
+library(ggplot2)
+getwd()
+setwd("/Users/ytovar/Desktop/Capstone Project/Raw Data")
+
+# We upload the files from the past 12 months
+
+jul_22 <- read_csv("202207-divvy-tripdata.csv")
+jun_22 <- read_csv("202206-divvy-tripdata.csv")
+may_22 <- read_csv("202205-divvy-tripdata.csv")
+apr_22 <- read_csv("202204-divvy-tripdata.csv")
+mar_22 <- read_csv("202203-divvy-tripdata.csv")
+feb_22 <- read_csv("202202-divvy-tripdata.csv")
+jan_22 <- read_csv("202201-divvy-tripdata.csv")
+dec_21 <- read_csv("202112-divvy-tripdata.csv")
+nov_21 <- read_csv("202111-divvy-tripdata.csv")
+oct_21 <- read_csv("202110-divvy-tripdata.csv")
+sep_21 <- read_csv("202109-divvy-tripdata.csv")
+aug_21 <- read_csv("202108-divvy-tripdata.csv")
+
+# Inspect data
+
+str(jul_22)
+str(jun_22)
+str(may_22)
+str(apr_22)
+str(mar_22)
+str(feb_22)
+str(jan_22)
+str(dec_21)
+str(nov_21)
+str(oct_21)
+str(sep_21)
+str(aug_21)
+
+# Stack individual months into one big data frame
+
+year_tripdata <- bind_rows(jul_22,jun_22,may_22,apr_22,mar_22,feb_22,jan_22,dec_21,nov_21,oct_21,sep_21
+                       ,aug_21)
+
+#remove irrelevant data
+
+year_tripdata <- year_tripdata %>% 
+  select(-c(start_lat, start_lng, end_lat, end_lng))
+
+(year_tripdata <- rename(year_tripdata, usertype = member_casual))
+View(year_tripdata)
+
+summary(year_tripdata)
+table(year_tripdata$usertype)
+table(year_tripdata$rideable_type)
+
+# Add columns for date, month, day, year of each ride
+
+year_tripdata$date <- as.Date(year_tripdata$started_at)
+year_tripdata$month <- format(as.Date(year_tripdata$date), "%m")
+year_tripdata$day <- format(as.Date(year_tripdata$date), "%d")
+year_tripdata$year <- format(as.Date(year_tripdata$date), "%Y")
+year_tripdata$day_of_week <- format(as.Date(year_tripdata$date), "%A")
+year_tripdata$month_name <- format(as.Date(year_tripdata$date), "%B")
+
+# Add a ride length column to "all_trips"
+
+year_tripdata$ride_length <- difftime(year_tripdata$ended_at, year_tripdata$started_at)
+
+str(year_tripdata)
+
+#Convert ride_length from factor to numeric
+
+is.factor(year_tripdata$ride_length)
+year_tripdata$ride_length <- as.numeric(as.character(year_tripdata$ride_length))
+is.numeric(year_tripdata$ride_length)
+
+#remove "bad" data
+year_tripdata_v2 <- year_tripdata[!(year_tripdata$start_station_name == "HQ QR" | year_tripdata$ride_length <0),]
+
+
+#Descriptive analysis 
+select(year_tripdata_v2, ride_length, ended_at, started_at, start_station_name) %>% 
+  filter(ride_length <0 )
+
+summary(year_tripdata_v2)
+summary(year_tripdata_v2$ride_length)
+
+mean(year_tripdata_v2$ride_length)
+median(year_tripdata_v2$ride_length)
+max(year_tripdata_v2$ride_length)
+min(year_tripdata_v2$ride_length)
+
+#comparing members and casual users
+
+aggregate(year_tripdata_v2$ride_length ~ year_tripdata_v2$usertype, FUN=mean)
+aggregate(year_tripdata_v2$ride_length ~ year_tripdata_v2$usertype, FUN=max)
+aggregate(year_tripdata_v2$ride_length ~ year_tripdata_v2$usertype, FUN = median)
+aggregate(year_tripdata_v2$ride_length ~ year_tripdata_v2$usertype, FUN = min)
+
+aggregate(year_tripdata_v2$ride_length ~ year_tripdata_v2$usertype + year_tripdata_v2$day_of_week, FUN = mean)
+
+# Average ride length per day per user
+year_tripdata_v2$day_of_week <- ordered(year_tripdata_v2$day_of_week, levels=c("Sunday", "Monday", "Tuesday"
+                                                                       ,"Wednesday", "Thursday", "Friday"
+                                                                       , "Saturday"))
+aggregate(year_tripdata_v2$ride_length ~ year_tripdata_v2$usertype + year_tripdata_v2$day_of_week, FUN = mean)
+
+
+# Average ride length per user per month
+year_tripdata_v2$month_name <- ordered(year_tripdata_v2$month_name, levels = c("August", "September", "October"
+                                                                          , "November", "December", "January"
+                                                                          , "February", "March", "April", "May"
+                                                                          , "June", "July"))
+aggregate(year_tripdata_v2$ride_length ~ year_tripdata_v2$usertype + year_tripdata_v2$month_name, FUN = mean)
+
+
+#analyze ridership data by user and weekday
+daily_rides<-year_tripdata_v2 %>% 
+  mutate(weekday=wday(started_at, label= TRUE)) %>% 
+  group_by(usertype, weekday) %>% 
+  summarize(number_of_rides=n(), average_duration = mean(ride_length)) %>% 
+  arrange(usertype,weekday) %>% 
+  drop_na()
+View(daily_rides)
+
+write.csv(daily_rides, file = "~/Desktop/Capstone Project/daily_rides.csv")
+
+#plot for number of rides per day
+year_tripdata_v2 %>% 
+  mutate(weekday=wday(started_at, label=TRUE)) %>% 
+  group_by(usertype, weekday) %>% 
+  summarize(number_of_rides=n(), average_duration = mean(ride_length)) %>% 
+  arrange(usertype,weekday) %>%
+  drop_na() %>% 
+  ggplot(aes(x=weekday, y=number_of_rides, fill= usertype)) + geom_col(position= "dodge") +
+  labs(title = "Number of Rides per Day by User")
+
+#plot for average duration per day
+year_tripdata_v2 %>% 
+  mutate(weekday=wday(started_at, label=TRUE)) %>% 
+  group_by(usertype, weekday) %>% 
+  summarize(number_of_rides=n(), average_duration = mean(ride_length)) %>% 
+  arrange(usertype,weekday) %>%
+  drop_na() %>% 
+  ggplot(aes(x=weekday,y=average_duration, fill= usertype)) + geom_col(position= "dodge")
+
+
+#plot of number trips/average duration per month
+monthly_rides <- year_tripdata_v2 %>% 
+  group_by(usertype, month_name) %>% 
+  summarize(number_of_rides =n(), average_duration = mean(ride_length)) %>% 
+  arrange(usertype, month_name) %>% 
+  drop_na()
+View(monthly_rides)
+
+write.csv(monthly_rides, file = "~/Desktop/Capstone Project/monthly_rides.csv")
+
+
+bike_popularity <- year_tripdata_v2 %>% 
+  group_by(rideable_type) %>% 
+  summarize(number_of_rides= n(), average_duration= mean(ride_length)) %>%
+  arrange(desc(number_of_rides)) %>% 
+  drop_na()
+View(bike_popularity)
+
+write.csv(bike_popularity, file = "~/Desktop/Capstone Project/bike_popularity.csv")
+
+bike_popularity_user <- year_tripdata_v2 %>% 
+  group_by(usertype, rideable_type) %>% 
+  summarize(number_of_trips= n(), average_duartion = mean(ride_length)) %>% 
+  arrange(usertype, rideable_type) %>% 
+  drop_na()
+View(bike_popularity_user)
+
+write.csv(bike_popularity_user, file = "~/Desktop/Capstone Project/bike_popularity_user.csv")
+
+
+start_station_casual <- year_tripdata_v2 %>% 
+  group_by(usertype, start_station_name) %>% 
+  filter(usertype == "casual") %>% 
+  summarize(number_of_trips = n()) %>% 
+  arrange(desc(number_of_trips)) %>% 
+  drop_na() %>% 
+  head(10)
+View(start_station_casual)
+
+write.csv(start_station_casual, file = "~/Desktop/Capstone Project/start_station_casual.csv")
+  
+start_station_member <- year_tripdata_v2 %>% 
+  group_by(usertype, start_station_name) %>% 
+  filter(usertype == "member") %>% 
+  summarize(number_of_trips = n()) %>% 
+  arrange(desc(number_of_trips)) %>% 
+  drop_na() %>% 
+  head(10)
+View(start_station_member)
+write.csv(start_station_member, file = "~/Desktop/Capstone Project/start_station_member.csv")
+
+end_station_casual <- year_tripdata_v2 %>% 
+  group_by(usertype, end_station_name) %>% 
+  filter(usertype == "casual") %>% 
+  summarize(number_of_trips = n()) %>% 
+  arrange(desc(number_of_trips)) %>% 
+  drop_na() %>% 
+  head(10)
+View(end_station_casual)
+write.csv(end_station_casual, file = "~/Desktop/Capstone Project/end_station_casual.csv")
+
+
+end_station_member <- year_tripdata_v2 %>% 
+  group_by(usertype, end_station_name) %>% 
+  filter(usertype == "member") %>% 
+  summarize(number_of_trips = n()) %>% 
+  arrange(desc(number_of_trips)) %>% 
+  drop_na() %>% 
+  head(10)
+View(end_station_member)
+write.csv(end_station_member, file = "~/Desktop/Capstone Project/end_station_member.csv")
+
+num_of_rides_user <- year_tripdata_v2 %>% 
+  group_by(usertype, ride_id) %>% 
+  summarize(rides = n()) %>% 
+  arrange(usertype,ride_id) %>% 
+  drop_na()
+View(num_of_rides_user)
+
+#Export summary file for further analysis
+all_trips_v2$day_of_week <- ordered(all_trips_v2$day_of_week, levels=c("Sunday", "Monday", "Tuesday"
+                                                                       ,"Wednesday", "Thursday", "Friday"
+                                                                       , "Saturday"))
+counts <- aggregate(all_trips_v2$ride_length ~ all_trips_v2$usertype + all_trips_v2$day_of_week, FUN = mean)
+
+write.csv(counts, file= "~/Desktop/Capstone Project/avg_ride_length.csv")
+write.csv(all_trips_v2, file = "~/Desktop/Capstone Project/year_tripdata.csv")
+
